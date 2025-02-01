@@ -32,12 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MCP_ADDR 0x20<<1
-#define MCP_IODIRA 0x00
-#define MCP_OLATA 0x14
-#define MCP_GPIOA 0x12
-#define I2C_WRITE 1
-#define I2C_READ 0
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,6 +49,9 @@ UART_HandleTypeDef huart2;
 uint8_t RxData[16];
 uint8_t RxLen;
 HAL_StatusTypeDef I2C_Status = HAL_OK;
+uint8_t Status;
+uint8_t Resp[MAX_I2C_SIZE + 3] = {FUNC_READ, GOOD};
+uint8_t Func = FUNC_READ;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -103,10 +101,6 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-//  uint8_t iodir[] = {0x00};
-//  uint8_t olat_on[] = {0xff};
-//  uint8_t olat_off[] = {0x00};
-//  HAL_I2C_Mem_Write(&hi2c1, MCP_ADDR, MCP_IODIRA, 1, iodir, 1, 50);
 
   /* USER CODE END 2 */
 
@@ -114,10 +108,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  HAL_I2C_Mem_Write(&hi2c1, MCP_ADDR, MCP_OLATA, 1, olat_on, 1, 50);
-//	  HAL_Delay(500);
-//	  HAL_I2C_Mem_Write(&hi2c1, MCP_ADDR, MCP_OLATA, 1, olat_off, 1, 50);
-//	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -360,43 +350,53 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void USB_CDC_RxHandler(uint8_t* Buf, uint32_t Len)
 {
-	uint8_t Error0[] = "err0\r\n";
-	uint8_t Error1[] = "err1\r\n";
-	uint8_t Error2[] = "err2\r\n";
-	uint8_t Error3[] = "err3\r\n";
-	uint8_t ErrorL[] = "errL\r\n";
+	// Reseting response
+	Status = GOOD;
+	Func = Buf[FUNC_BYTE];
+	if (Func==FUNC_READ) {
+		Resp[RESP_FUNC_BYTE] = FUNC_READ;
+	}
+	else if (Func==FUNC_WRITE) {
+		Resp[RESP_FUNC_BYTE] = FUNC_WRITE;
+	}
 
 	// Error Checking
-	if (Len < 4) {
+	if ((Func==FUNC_READ && Len<PKT_MIN_RD_LEN) || (Func==FUNC_WRITE && Len<PKT_MIN_WR_LEN)) {
 		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		CDC_Transmit_FS(ErrorL, sizeof(ErrorL));
+		Status = ERR4;
+		Error_Handling();
 	}
-	else if (Buf[0]>0x7f){ // I2C Device Address
+	else if (Buf[DEV_ADDR_BYTE]>MAX_I2C_DEV){ // I2C Device Address
 		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		CDC_Transmit_FS(Error0, sizeof(Error0));
+		Status = ERR0;
+		Error_Handling();
 	}
-	else if (Buf[1]>0x64) { // I2C Register
+	else if (Buf[REG_BYTE]>MAX_I2C_REG) { // I2C Register
 		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		CDC_Transmit_FS(Error1, sizeof(Error1));
+		Status = ERR1;
+		Error_Handling();
 	}
-	else if (Buf[2]>16) { // Number of bytes write/read
+	else if (Buf[SIZE_BYTE]>MAX_I2C_SIZE) { // Number of bytes write/read
 		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		CDC_Transmit_FS(Error2, sizeof(Error2));
+		Status = ERR2;
+		Error_Handling();
 	}
-	else if (Buf[3]!=I2C_READ && Buf[3]!=I2C_WRITE) { // Read = 0 ; Write = 1
+	else if (Buf[FUNC_BYTE]!=FUNC_READ && Buf[FUNC_BYTE]!=FUNC_WRITE) { // Read = 0 ; Write = 1
 		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		CDC_Transmit_FS(Error3, sizeof(Error3));
+		Status = ERR3;
+		Error_Handling();
 	}
 	else {
 //		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);
-		if (Buf[3]==I2C_WRITE) {
-			I2C_Status = HAL_I2C_Mem_Write(&hi2c1, Buf[0]<<1, Buf[1], 1, &Buf[4], Buf[2], 1);
-			I2C_ErrorHandling(I2C_Status, I2C_WRITE);
+		RxLen = Buf[SIZE_BYTE];
+		if (Func==FUNC_WRITE) {
+			memcpy(RxData, &Buf[DATA_BYTE], RxLen);
+			I2C_Status = HAL_I2C_Mem_Write(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, &Buf[DATA_BYTE], Buf[SIZE_BYTE], 1);
+			Response_Handling(I2C_Status);
 		}
-		else if (Buf[3]==I2C_READ){
-			RxLen = Buf[2];
-			I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[0]<<1, Buf[1], 1, RxData, Buf[2], 1);
-			I2C_ErrorHandling(I2C_Status, I2C_READ);
+		else if (Func==FUNC_READ){
+			I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, RxData, Buf[SIZE_BYTE], 1);
+			Response_Handling(I2C_Status);
 //			HAL_I2C_Mem_Read_IT(&hi2c1, Buf[0]<<1, Buf[1], 1, RxData, Buf[2]);
 		}
 	}
@@ -404,18 +404,24 @@ void USB_CDC_RxHandler(uint8_t* Buf, uint32_t Len)
     HAL_GPIO_TogglePin(GPIOD, LD5_Pin); // Debug
 }
 
-void HAL_I2C_RxCallBack() {
+void HAL_I2C_RxCallBack(void) {
 	HAL_GPIO_TogglePin(GPIOD, LD4_Pin); // Debug
-	CDC_Transmit_FS(RxData, RxLen);
+	Resp[RESP_ERR_BYTE] = Status;
+	memcpy(&Resp[RESP_DATA_BYTE], RxData, RxLen);
+	Resp[RESP_DATA_BYTE + RxLen] = '\0';
+//	CDC_Transmit_FS(RxData, RxLen);
+	CDC_Transmit_FS(Resp, RxLen + 3);
 }
 
-void I2C_ErrorHandling(HAL_StatusTypeDef Status, uint8_t RW) {
-	uint8_t ErrorR[] = "errR\r\n";
+void Response_Handling(HAL_StatusTypeDef HAL_Status) {
 
-	switch(Status) {
+	switch(HAL_Status) {
 		case HAL_OK:
 			HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);
-			if (RW==I2C_READ) {
+			if (Func==FUNC_READ) {
+				HAL_I2C_RxCallBack();
+			}
+			else if (Func==FUNC_WRITE) {
 				HAL_I2C_RxCallBack();
 			}
 			break;
@@ -423,24 +429,18 @@ void I2C_ErrorHandling(HAL_StatusTypeDef Status, uint8_t RW) {
 		case HAL_ERROR:
 		case HAL_TIMEOUT:
 			HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-			CDC_Transmit_FS(ErrorR, sizeof(ErrorR));
+			Status = ERR5;
+			Error_Handling();
 			break;
 		default:
 	}
 }
 
-//void USB_I2C_TxHandler(uint8_t dev_addr, uint8_t reg, uint8_t Len, uint8_t RW, uint8_t* data)
-//{
-//	uint8_t good[] = "OK\r\n";
-//	if (RW==1) { // Write
-//		CDC_Transmit_FS(good, sizeof(good));
-//		HAL_I2C_Mem_Write(&hi2c1, dev_addr, reg, 1, data, Len, 50);
-//	}
-//	else if (RW==0) {
-//		HAL_I2C_Mem_Read_IT(&hi2c1, dev_addr, reg, 1, data, Len);
-//	}
-//	HAL_GPIO_TogglePin(GPIOD, LD3_Pin);
-//}
+void Error_Handling(void) {
+	Resp[RESP_ERR_BYTE] = Status;
+	Resp[RESP_DATA_BYTE] = '\0';
+	CDC_Transmit_FS(Resp, 3);
+}
 
 /* USER CODE END 4 */
 

@@ -55,7 +55,8 @@ void Error_Handler(void);
 /* USER CODE BEGIN EFP */
 void USB_CDC_RxHandler(uint8_t*, uint32_t);
 void HAL_I2C_RxCallBack(void);
-void I2C_ErrorHandling(HAL_StatusTypeDef, uint8_t);
+void Response_Handling(HAL_StatusTypeDef);
+void Error_Handling(void);
 //void USB_I2C_TxHandler(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t*);
 //void USB_I2C_RxHandler(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t*);
 
@@ -130,6 +131,50 @@ void I2C_ErrorHandling(HAL_StatusTypeDef, uint8_t);
 #define MEMS_INT2_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
+#define MAX_I2C_DEV 0x7f
+#define MAX_I2C_REG 0x64
+#define MAX_I2C_SIZE 16
+
+// USB I2C Packet Format for FUNC_READ & FUNC_WRITE modes
+#define FUNC_BYTE 0
+#define DEV_ADDR_BYTE 1
+#define REG_BYTE 2
+#define SIZE_BYTE 3
+#define DATA_BYTE 4
+// Min Lengths for FUNC_READ & FUNC_WRITE modes
+#define PKT_MIN_RD_LEN 4
+#define PKT_MIN_WR_LEN 5
+
+// USB I2C Packet Format for FUNC_BURST modes
+#define BST_FUNC_BYTE 0
+#define BST_DEV_ADDR_BYTE 1
+#define BST_DEV_NUM_BYTE 2
+#define BST_REG_BYTE 3
+#define BST_SIZE_BYTE 4
+#define BST_DATA_BYTE 5
+// Min Lengths for FUNC_BURST modes
+#define BST_MIN_RD_LEN 5
+#define BST_MIN_WR_LEN 6
+
+// Function/Modes supported
+#define FUNC_READ 0x10
+#define FUNC_WRITE 0x11
+#define FUNC_BURST_RD 0x12
+#define FUNC_BURST_WR 0x13
+
+// Error Messages
+#define GOOD 0x0e // No error at all
+#define ERR0 0xe0 // Error in Device Address
+#define ERR1 0xe1 // Error in I2C Register
+#define ERR2 0xe2 // Error in size byte
+#define ERR3 0xe3 // Error in Func mode
+#define ERR4 0xe4 // Error in Length sent
+#define ERR5 0xe5 // Error in HAL I2C
+
+// Response Format
+#define RESP_FUNC_BYTE 0
+#define RESP_ERR_BYTE 1
+#define RESP_DATA_BYTE 2
 
 /* USER CODE END Private defines */
 
