@@ -397,7 +397,6 @@ void USB_CDC_RxHandler(uint8_t* Buf, uint32_t Len)
 		else if (Func==FUNC_READ){
 			I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, RxData, Buf[SIZE_BYTE], 1);
 			Response_Handling(I2C_Status);
-//			HAL_I2C_Mem_Read_IT(&hi2c1, Buf[0]<<1, Buf[1], 1, RxData, Buf[2]);
 		}
 	}
 
