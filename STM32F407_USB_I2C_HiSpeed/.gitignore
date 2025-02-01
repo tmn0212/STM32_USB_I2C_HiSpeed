@@ -5,10 +5,12 @@
 .metadata/
 
 #Debug
-Debug/
-debug/
 Release/
 release
+*.cyclo
+*.list
+*.mk
+makefile
 
 # Prerequisites
 *.d
@@ -42,8 +44,6 @@ release
 *.app
 *.i*86
 *.x86_64
-*.hex
-*.bin
 
 # Debug files
 *.dSYM/
