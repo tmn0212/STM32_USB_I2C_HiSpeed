@@ -134,6 +134,8 @@ void Error_Handling(void);
 #define MAX_I2C_DEV 0x7f
 #define MAX_I2C_REG 0x64
 #define MAX_I2C_SIZE 16
+#define MAX_BST_DEV_NUM 8
+#define MAX_BST_REG_SIZE 2
 
 // USB I2C Packet Format for FUNC_READ & FUNC_WRITE modes
 #define FUNC_BYTE 0
@@ -163,13 +165,16 @@ void Error_Handling(void);
 #define FUNC_BURST_WR 0x13
 
 // Error Messages
-#define GOOD 0x0e // No error at all
+#define GOOD 0x00 // No error at all
 #define ERR0 0xe0 // Error in Device Address
 #define ERR1 0xe1 // Error in I2C Register
 #define ERR2 0xe2 // Error in size byte
 #define ERR3 0xe3 // Error in Func mode
 #define ERR4 0xe4 // Error in Length sent
 #define ERR5 0xe5 // Error in HAL I2C
+#define ERR6 0xe6 // Undefined function/modes
+#define ERR7 0xe7 // Burst Mode Device Number over 8
+#define ERR8 0xe8 // Burst Mode Reg Size over 2
 
 // Response Format
 #define RESP_FUNC_BYTE 0

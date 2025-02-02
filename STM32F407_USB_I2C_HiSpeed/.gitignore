@@ -50,3 +50,4 @@ makefile
 *.su
 *.idb
 *.pdb
+/Debug/

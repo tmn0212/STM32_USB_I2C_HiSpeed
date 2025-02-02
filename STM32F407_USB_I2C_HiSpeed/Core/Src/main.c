@@ -50,8 +50,9 @@ uint8_t RxData[16];
 uint8_t RxLen;
 HAL_StatusTypeDef I2C_Status = HAL_OK;
 uint8_t Status;
-uint8_t Resp[MAX_I2C_SIZE + 3] = {FUNC_READ, GOOD};
+uint8_t Resp[MAX_I2C_SIZE + 4] = {FUNC_READ, GOOD};
 uint8_t Func = FUNC_READ;
+uint8_t BST_Status = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -350,77 +351,129 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void USB_CDC_RxHandler(uint8_t* Buf, uint32_t Len)
 {
+	HAL_GPIO_TogglePin(GPIOD, LD5_Pin); // Debug
+
 	// Reseting response
 	Status = GOOD;
 	Func = Buf[FUNC_BYTE];
-	if (Func==FUNC_READ) {
-		Resp[RESP_FUNC_BYTE] = FUNC_READ;
-	}
-	else if (Func==FUNC_WRITE) {
-		Resp[RESP_FUNC_BYTE] = FUNC_WRITE;
-	}
+	Resp[RESP_FUNC_BYTE] = Func;
 
 	// Error Checking
-	if ((Func==FUNC_READ && Len<PKT_MIN_RD_LEN) || (Func==FUNC_WRITE && Len<PKT_MIN_WR_LEN)) {
-		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		Status = ERR4;
-		Error_Handling();
-	}
-	else if (Buf[DEV_ADDR_BYTE]>MAX_I2C_DEV){ // I2C Device Address
-		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		Status = ERR0;
-		Error_Handling();
-	}
-	else if (Buf[REG_BYTE]>MAX_I2C_REG) { // I2C Register
-		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		Status = ERR1;
-		Error_Handling();
-	}
-	else if (Buf[SIZE_BYTE]>MAX_I2C_SIZE) { // Number of bytes write/read
-		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		Status = ERR2;
-		Error_Handling();
-	}
-	else if (Buf[FUNC_BYTE]!=FUNC_READ && Buf[FUNC_BYTE]!=FUNC_WRITE) { // Read = 0 ; Write = 1
-		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-		Status = ERR3;
-		Error_Handling();
-	}
-	else {
-//		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);
-		RxLen = Buf[SIZE_BYTE];
-		if (Func==FUNC_WRITE) {
-			memcpy(RxData, &Buf[DATA_BYTE], RxLen);
-			I2C_Status = HAL_I2C_Mem_Write(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, &Buf[DATA_BYTE], Buf[SIZE_BYTE], 1);
-			Response_Handling(I2C_Status);
+	if (Func==FUNC_BURST_RD || Func==FUNC_BURST_WR) {
+		if ((Func==FUNC_BURST_RD && Len<BST_MIN_RD_LEN) || (Func==FUNC_BURST_WR && Len<BST_MIN_WR_LEN)) {
+			Status = ERR4;
 		}
-		else if (Func==FUNC_READ){
-			I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, RxData, Buf[SIZE_BYTE], 1);
-			Response_Handling(I2C_Status);
+		else if (Buf[BST_DEV_ADDR_BYTE]>MAX_I2C_DEV) {
+			Status = ERR0;
 		}
+		else if (Buf[BST_DEV_NUM_BYTE]>MAX_BST_DEV_NUM) {
+			Status = ERR7;
+		}
+		else if (Buf[BST_REG_BYTE]>MAX_I2C_REG) {
+			Status = ERR1;
+		}
+		else if (Buf[BST_SIZE_BYTE]>MAX_BST_REG_SIZE) {
+			Status = ERR8;
+		}
+		else {
+			if (Func==FUNC_BURST_RD) {
+				BST_Status = 0;
+				RxLen = 0;
+				for (int dev = 0; dev < Buf[BST_DEV_NUM_BYTE]; dev++) {
+					I2C_Status = HAL_I2C_Mem_Read(&hi2c1, (Buf[BST_DEV_ADDR_BYTE]+dev)<<1, Buf[BST_REG_BYTE], 1, &RxData[RxLen], Buf[BST_SIZE_BYTE], 1);
+					RxLen = RxLen + Buf[BST_SIZE_BYTE];
+					if (I2C_Status!=HAL_OK) {
+						BST_Status = BST_Status | (0b1<<dev);
+					}
+				}
+			}
+			else if (Func==FUNC_BURST_WR) {
+				BST_Status = 0;
+				RxLen = 0;
+				for(int dev = 0; dev < Buf[BST_DEV_NUM_BYTE]; dev++) {
+					I2C_Status = HAL_I2C_Mem_Write(&hi2c1, (Buf[BST_DEV_ADDR_BYTE]+dev)<<1, Buf[BST_REG_BYTE], 1, &Buf[BST_DATA_BYTE+RxLen], Buf[BST_SIZE_BYTE], 1);
+					RxLen = RxLen + Buf[BST_SIZE_BYTE];
+					if (I2C_Status!=HAL_OK) {
+						BST_Status = BST_Status | (0b1<<dev);
+					}
+				}
+				memcpy(RxData, &Buf[BST_DATA_BYTE], RxLen);
+			}
+
+			if (BST_Status==0) {
+				Status = GOOD;
+				I2C_Status = HAL_OK;
+			}
+			else {
+				I2C_Status = HAL_ERROR;
+			}
+			Response_Handling(I2C_Status);
+			return;
+		}
+	}
+	else if (Func==FUNC_READ || Func==FUNC_WRITE) {
+		if ((Func==FUNC_READ && Len<PKT_MIN_RD_LEN) || (Func==FUNC_WRITE && Len<PKT_MIN_WR_LEN)) {
+			Status = ERR4;
+		}
+		else if (Buf[DEV_ADDR_BYTE]>MAX_I2C_DEV){ // I2C Device Address
+			Status = ERR0;
+		}
+		else if (Buf[REG_BYTE]>MAX_I2C_REG) { // I2C Register
+			Status = ERR1;
+		}
+		else if (Buf[SIZE_BYTE]>MAX_I2C_SIZE) { // Number of bytes write/read
+			Status = ERR2;
+		}
+		else if (Buf[FUNC_BYTE]!=FUNC_READ && Buf[FUNC_BYTE]!=FUNC_WRITE) { // Read = 0 ; Write = 1
+			Status = ERR3;
+		}
+		else {
+			RxLen = Buf[SIZE_BYTE];
+			if (Func==FUNC_WRITE) {
+				memcpy(RxData, &Buf[DATA_BYTE], RxLen);
+				I2C_Status = HAL_I2C_Mem_Write(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, &Buf[DATA_BYTE], Buf[SIZE_BYTE], 1);
+				Response_Handling(I2C_Status);
+				return;
+			}
+			else if (Func==FUNC_READ){
+				I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[DEV_ADDR_BYTE]<<1, Buf[REG_BYTE], 1, RxData, Buf[SIZE_BYTE], 1);
+				Response_Handling(I2C_Status);
+				return;
+			}
+		}
+	}
+	else { // Invalid Function/mode
+		Status = ERR6;
 	}
 
-    HAL_GPIO_TogglePin(GPIOD, LD5_Pin); // Debug
+	// Error Response
+	if (Status!=GOOD) {
+		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
+		Error_Handling();
+	}
+
+
 }
 
 void HAL_I2C_RxCallBack(void) {
 	HAL_GPIO_TogglePin(GPIOD, LD4_Pin); // Debug
 	Resp[RESP_ERR_BYTE] = Status;
 	memcpy(&Resp[RESP_DATA_BYTE], RxData, RxLen);
-	Resp[RESP_DATA_BYTE + RxLen] = '\0';
+	Resp[RESP_DATA_BYTE + RxLen] = 0xee;
+	Resp[RESP_DATA_BYTE + RxLen + 1] = 0x0f;
 //	CDC_Transmit_FS(RxData, RxLen);
-	CDC_Transmit_FS(Resp, RxLen + 3);
+	CDC_Transmit_FS(Resp, RxLen + 4);
 }
 
-void Response_Handling(HAL_StatusTypeDef HAL_Status) {
+void Response_Handling(HAL_StatusTypeDef I2C_Status) {
 
-	switch(HAL_Status) {
+	switch(I2C_Status) {
 		case HAL_OK:
 			HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);
-			if (Func==FUNC_READ) {
+			if (Func==FUNC_READ || Func==FUNC_WRITE) {
 				HAL_I2C_RxCallBack();
 			}
-			else if (Func==FUNC_WRITE) {
+			else if (Func==FUNC_BURST_RD || Func==FUNC_BURST_WR) {
 				HAL_I2C_RxCallBack();
 			}
 			break;
@@ -428,8 +481,14 @@ void Response_Handling(HAL_StatusTypeDef HAL_Status) {
 		case HAL_ERROR:
 		case HAL_TIMEOUT:
 			HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
-			Status = ERR5;
-			Error_Handling();
+			if (Func==FUNC_READ || Func==FUNC_WRITE) {
+				Status = ERR5;
+				Error_Handling();
+			}
+			else if (Func==FUNC_BURST_RD || Func==FUNC_BURST_WR) {
+				Status = BST_Status;
+				HAL_I2C_RxCallBack();
+			}
 			break;
 		default:
 	}
@@ -437,8 +496,10 @@ void Response_Handling(HAL_StatusTypeDef HAL_Status) {
 
 void Error_Handling(void) {
 	Resp[RESP_ERR_BYTE] = Status;
-	Resp[RESP_DATA_BYTE] = '\0';
-	CDC_Transmit_FS(Resp, 3);
+	Resp[RESP_DATA_BYTE] = 0xee;
+	Resp[RESP_DATA_BYTE + 1] = 0x0f;
+	CDC_Transmit_FS(Resp, 4);
+	Status = GOOD;
 }
 
 /* USER CODE END 4 */
