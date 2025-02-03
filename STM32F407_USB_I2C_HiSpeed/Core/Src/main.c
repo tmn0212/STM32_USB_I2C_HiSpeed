@@ -376,10 +376,10 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 	// Define I2C Port
 	if ((Buf[FUNC_BYTE] & 0xf0) == I2C1_PORT) {
 		I2C_Port = hi2c1;
-		Buf[FUNC_BYTE] = Buf[FUNC_BYTE] & 0x0f;
+		Func = Buf[FUNC_BYTE] & 0x0f;
 	} else if ((Buf[FUNC_BYTE] & 0xf0) == I2C2_PORT) {
 		I2C_Port = hi2c2;
-		Buf[FUNC_BYTE] = Buf[FUNC_BYTE] & 0x0f;
+		Func = Buf[FUNC_BYTE] & 0x0f;
 	} else {
 		Status = ERRB;
 		Error_Handling();
@@ -387,8 +387,7 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 	}
 
 	// Reseting response
-	Func = Buf[FUNC_BYTE];
-	Resp[RESP_FUNC_BYTE] = Func;
+	Resp[RESP_FUNC_BYTE] = Buf[FUNC_BYTE];
 
 	// Error Checking
 	if (Func == FUNC_BURST_RD || Func == FUNC_BURST_WR) {
@@ -447,8 +446,6 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 			Status = ERR1;
 		} else if (Buf[SIZE_BYTE] > MAX_I2C_SIZE) { // Number of bytes write/read
 			Status = ERR2;
-		} else if (Buf[FUNC_BYTE] != FUNC_READ && Buf[FUNC_BYTE] != FUNC_WRITE) { // Read = 0 ; Write = 1
-			Status = ERR3;
 		} else {
 			RxLen = Buf[SIZE_BYTE];
 			if (Func == FUNC_WRITE) {
