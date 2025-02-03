@@ -53,6 +53,7 @@ HAL_StatusTypeDef I2C_Status = HAL_OK;
 uint8_t Status;
 uint8_t Resp[MAX_I2C_SIZE + 4] = { FUNC_READ, GOOD };
 uint8_t Func = FUNC_READ;
+I2C_HandleTypeDef I2C_Port;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -280,7 +281,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -368,11 +370,25 @@ static void MX_GPIO_Init(void) {
 void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 	HAL_GPIO_TogglePin(GPIOD, LD5_Pin); // Debug
 
-	// Reseting response
 	Status = GOOD;
+	RxLen = 0;
+
+	// Define I2C Port
+	if ((Buf[FUNC_BYTE] & 0xf0) == I2C1_PORT) {
+		I2C_Port = hi2c1;
+		Buf[FUNC_BYTE] = Buf[FUNC_BYTE] & 0x0f;
+	} else if ((Buf[FUNC_BYTE] & 0xf0) == I2C2_PORT) {
+		I2C_Port = hi2c2;
+		Buf[FUNC_BYTE] = Buf[FUNC_BYTE] & 0x0f;
+	} else {
+		Status = ERRB;
+		Error_Handling();
+		return;
+	}
+
+	// Reseting response
 	Func = Buf[FUNC_BYTE];
 	Resp[RESP_FUNC_BYTE] = Func;
-	RxLen = 0;
 
 	// Error Checking
 	if (Func == FUNC_BURST_RD || Func == FUNC_BURST_WR) {
@@ -390,7 +406,7 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 		} else {
 			if (Func == FUNC_BURST_RD) {
 				for (int dev = 0; dev < Buf[BST_DEV_NUM_BYTE]; dev++) {
-					I2C_Status = HAL_I2C_Mem_Read(&hi2c1,
+					I2C_Status = HAL_I2C_Mem_Read(&I2C_Port,
 							(Buf[BST_DEV_ADDR_BYTE] + dev) << 1,
 							Buf[BST_REG_BYTE], 1, &RxData[RxLen],
 							Buf[BST_SIZE_BYTE], 1);
@@ -401,7 +417,7 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 				}
 			} else if (Func == FUNC_BURST_WR) {
 				for (int dev = 0; dev < Buf[BST_DEV_NUM_BYTE]; dev++) {
-					I2C_Status = HAL_I2C_Mem_Write(&hi2c1,
+					I2C_Status = HAL_I2C_Mem_Write(&I2C_Port,
 							(Buf[BST_DEV_ADDR_BYTE] + dev) << 1,
 							Buf[BST_REG_BYTE], 1, &Buf[BST_DATA_BYTE + RxLen],
 							Buf[BST_SIZE_BYTE], 1);
@@ -437,13 +453,15 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 			RxLen = Buf[SIZE_BYTE];
 			if (Func == FUNC_WRITE) {
 				memcpy(RxData, &Buf[DATA_BYTE], RxLen);
-				I2C_Status = HAL_I2C_Mem_Write(&hi2c1, Buf[DEV_ADDR_BYTE] << 1,
-						Buf[REG_BYTE], 1, &Buf[DATA_BYTE], Buf[SIZE_BYTE], 1);
+				I2C_Status = HAL_I2C_Mem_Write(&I2C_Port,
+						Buf[DEV_ADDR_BYTE] << 1, Buf[REG_BYTE], 1,
+						&Buf[DATA_BYTE], Buf[SIZE_BYTE], 1);
 				Response_Handling(I2C_Status);
 				return;
 			} else if (Func == FUNC_READ) {
-				I2C_Status = HAL_I2C_Mem_Read(&hi2c1, Buf[DEV_ADDR_BYTE] << 1,
-						Buf[REG_BYTE], 1, RxData, Buf[SIZE_BYTE], 1);
+				I2C_Status = HAL_I2C_Mem_Read(&I2C_Port,
+						Buf[DEV_ADDR_BYTE] << 1, Buf[REG_BYTE], 1, RxData,
+						Buf[SIZE_BYTE], 1);
 				Response_Handling(I2C_Status);
 				return;
 			}
@@ -458,7 +476,7 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 			Status = ERR9;
 		} else {
 			for (int dev = 0; dev < Buf[DRDY_DEV_NUM_BYTE]; dev++) {
-				I2C_Status = HAL_I2C_IsDeviceReady(&hi2c1,
+				I2C_Status = HAL_I2C_IsDeviceReady(&I2C_Port,
 						(Buf[DRDY_DEV_ADDR_BYTE] + dev) << 1, DRDY_NUM_TRIAL,
 						1);
 				RxLen++;
@@ -490,7 +508,7 @@ void USB_CDC_RxHandler(uint8_t *Buf, uint32_t Len) {
 }
 
 void HAL_I2C_RxCallBack(void) {
-	uint8_t eop[] = {END_OF_PKT1, END_OF_PKT2};
+	uint8_t eop[] = { END_OF_PKT1, END_OF_PKT2 };
 	HAL_GPIO_TogglePin(GPIOD, LD4_Pin); // Debug
 	Resp[RESP_ERR_BYTE] = Status;
 	memcpy(&Resp[RESP_DATA_BYTE], RxData, RxLen);
@@ -530,9 +548,9 @@ void Response_Handling(HAL_StatusTypeDef I2C_Status) {
 }
 
 void Error_Handling(void) {
-	uint8_t eop[] = {END_OF_PKT1, END_OF_PKT2};
+	uint8_t eop[] = { END_OF_PKT1, END_OF_PKT2 };
 	Resp[RESP_ERR_BYTE] = Status;
-	memcpy(&Resp[RESP_DATA_BYTE+RxLen], eop, 2);
+	memcpy(&Resp[RESP_DATA_BYTE + RxLen], eop, 2);
 	CDC_Transmit_FS(Resp, RxLen + 4);
 }
 

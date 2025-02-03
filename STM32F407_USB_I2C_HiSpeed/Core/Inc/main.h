@@ -129,6 +129,11 @@ void Error_Handling(void);
 #define MEMS_INT2_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
+
+// I2C Port Define
+#define I2C1_PORT 0x10
+#define I2C2_PORT 0x20
+
 #define MAX_I2C_DEV 0x7f
 #define MAX_I2C_REG 0x64
 #define MAX_I2C_SIZE 16
@@ -170,11 +175,11 @@ void Error_Handling(void);
 #define DRDY_NUM_TRIAL 2
 
 // Function/Modes supported for I2C1
-#define FUNC_READ 0x10
-#define FUNC_WRITE 0x11
-#define FUNC_BURST_RD 0x12
-#define FUNC_BURST_WR 0x13
-#define FUNC_DEV_RDY 0x14
+#define FUNC_READ 0x00
+#define FUNC_WRITE 0x01
+#define FUNC_BURST_RD 0x02
+#define FUNC_BURST_WR 0x03
+#define FUNC_DEV_RDY 0x04
 
 // Error Messages
 #define GOOD 0x00 // No error at all
@@ -189,6 +194,7 @@ void Error_Handling(void);
 #define ERR8 0xe8 // Burst Mode Reg Size over 2
 #define ERR9 0xe9 // FUNC_DEV_RDY Dev Num over 16
 #define ERRA 0xea // FUNC_DEV_RDY Some device is not ready
+#define ERRB 0xeb // I2C Port not defined correctly
 
 // Response Format
 #define RESP_FUNC_BYTE 0
