@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.h
-  * @brief          : Header for main.c file.
-  *                   This file contains the common defines of the application.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.h
+ * @brief          : Header for main.c file.
+ *                   This file contains the common defines of the application.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
@@ -89,8 +89,6 @@ void Error_Handling(void);
 #define SPI1_MOSI_GPIO_Port GPIOA
 #define BOOT1_Pin GPIO_PIN_2
 #define BOOT1_GPIO_Port GPIOB
-#define CLK_IN_Pin GPIO_PIN_10
-#define CLK_IN_GPIO_Port GPIOB
 #define LD4_Pin GPIO_PIN_12
 #define LD4_GPIO_Port GPIOD
 #define LD3_Pin GPIO_PIN_13
@@ -136,6 +134,10 @@ void Error_Handling(void);
 #define MAX_I2C_SIZE 16
 #define MAX_BST_DEV_NUM 8
 #define MAX_BST_REG_SIZE 2
+#define DRDY_NOT_READY 0xff
+#define DRDY_READY 0x00
+#define END_OF_PKT1 0xee
+#define END_OF_PKT2 0x0f
 
 // USB I2C Packet Format for FUNC_READ & FUNC_WRITE modes
 #define FUNC_BYTE 0
@@ -158,11 +160,21 @@ void Error_Handling(void);
 #define BST_MIN_RD_LEN 5
 #define BST_MIN_WR_LEN 6
 
-// Function/Modes supported
+// Device Ready Mode (FUNC_DEV_RDY) packet format
+#define DRDY_FUNC_BYTE 0
+#define DRDY_DEV_ADDR_BYTE 1
+#define DRDY_DEV_NUM_BYTE 2
+//Min Length for FUNC_DEV_RDY
+#define DRDY_MIN_LEN 3
+#define DRDY_MAX_DEV_NUM 16
+#define DRDY_NUM_TRIAL 2
+
+// Function/Modes supported for I2C1
 #define FUNC_READ 0x10
 #define FUNC_WRITE 0x11
 #define FUNC_BURST_RD 0x12
 #define FUNC_BURST_WR 0x13
+#define FUNC_DEV_RDY 0x14
 
 // Error Messages
 #define GOOD 0x00 // No error at all
@@ -175,6 +187,8 @@ void Error_Handling(void);
 #define ERR6 0xe6 // Undefined function/modes
 #define ERR7 0xe7 // Burst Mode Device Number over 8
 #define ERR8 0xe8 // Burst Mode Reg Size over 2
+#define ERR9 0xe9 // FUNC_DEV_RDY Dev Num over 16
+#define ERRA 0xea // FUNC_DEV_RDY Some device is not ready
 
 // Response Format
 #define RESP_FUNC_BYTE 0
